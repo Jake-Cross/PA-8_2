@@ -1,0 +1,332 @@
+---
+title: "Intro to Machine Learning: Linear Regression Models"
+jupyter: python3
+format:
+  html:
+    embed-resources: true
+---
+
+
+
+```{python}
+import numpy as np
+import pandas as pd
+from plotnine import ggplot, aes, geom_point, geom_smooth, geom_line, labs, scale_x_continuous, theme_minimal
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import root_mean_squared_error
+```
+
+## Music Challenge
+
+Which popular songs from the past will be recognized by future generations, and which will fade into obscurity? The website [The Pudding](https://pudding.cool/) conducts the [Music Challenge](https://pudding.cool/2020/04/music-challenge/) where they ask thousands of people whether they recognize hit songs from the past. We'll look at some of the [data](https://github.com/the-pudding/song-decay-clean/tree/master/src/assets/data) related to the article ["Defining the 90s Music Canon"](https://pudding.cool/2020/07/song-decay/).
+
+The data set at https://raw.githubusercontent.com/the-pudding/song-decay-clean/refs/heads/master/src/assets/data/lollipop_chart_data_july_13.csv contains 344 songs released in the 1990s. For each song, the proportion of survey respondents who recognized the song is recorded, for both Millennial respondents and Gen Z respondents. Our goal will be to use linear regression to **predict the Gen Z recognition**.
+
+We will try several different linear regression models. Save each of your models with a different name because you will compare them at the end.
+
+
+0. Read in the data and describe the Gen Z recognition variable.
+
+```{python}
+music = pd.read_csv("https://raw.githubusercontent.com/the-pudding/song-decay-clean/refs/heads/master/src/assets/data/lollipop_chart_data_july_13.csv", index_col=0)
+print(music.shape)
+music.head()
+```
+
+```{python}
+music.columns
+```
+
+```{python}
+music["mean_gen_z_recognition"].describe()
+```
+
+1. Use scikit-learn to fit a linear regression model for predicting Gen Z recognition from Millennial recognition.
+
+```{python}
+millennial = "mean_millennial_recognition"
+gen_z = "mean_gen_z_recognition"
+
+X = music[[millennial]]
+y = music[gen_z]
+
+print(type(X).__name__, X.shape, "|", type(y).__name__, y.shape)
+```
+
+```{python}
+model_music = LinearRegression()
+model_music.fit(X, y)
+print("intercept:", round(model_music.intercept_, 4))
+print("coef:     ", model_music.coef_.round(4))
+print("R²:       ", round(model_music.score(X, y), 3))
+```
+
+2. Make a scatterplot of Gen Z recognition versus Millennial recognition, and overlay a graph of the fitted model from the previous part.
+
+```{python}
+(ggplot(music, aes(x="mean_millennial_recognition", y="mean_gen_z_recognition"))
+ + geom_point(alpha=0.6)
+ + geom_smooth(method="lm", se=False, color="firebrick")
+ + labs(x="Millennial Recognition", y="Gen Z Recognition")
+ + theme_minimal())
+```
+
+3. Explain why you might want to consider taking a log of Gen Z recognition. Then use scikit-learn to fit a linear regression model for predicting log of Gen Z recognition from Millennial recognition.
+
+Since Gen Z recognition is highly skewed
+
+```{python}
+import numpy as np
+
+y_log = np.log(y)
+
+model_music_log = LinearRegression()
+model_music_log.fit(X, y_log)
+
+print("intercept:", round(model_music_log.intercept_, 4))
+print("coef:     ", model_music_log.coef_.round(4))
+print("R²:       ", round(model_music_log.score(X, y_log), 3))
+```
+
+4. Make a scatterplot of Gen Z recognition versus Millennial recognition, and overlay a graph of the fitted model from the previous part.
+
+```{python}
+music["predicted_gen_z_log"] = np.exp(model_music_log.predict(X))
+```
+
+```{python}
+(ggplot(music, aes(x="mean_millennial_recognition", y="mean_gen_z_recognition"))
+ + geom_point(alpha=0.6)
+ + geom_line(aes(y="predicted_gen_z_log"), color="firebrick")
+ + labs(x="Millennial Recognition", y="Gen Z Recognition")
+ + theme_minimal())
+```
+
+5. Now we'll try a polynomial model for predicting Gen Z recognition from Millennial recognition. Use scikit-learn to fit a model with two features: Millennial recognition and its square.
+
+```{python}
+poly = PolynomialFeatures(degree=2, include_bias=False)
+
+X_poly = poly.fit_transform(X)
+
+print(X_poly.shape)
+print(poly.get_feature_names_out())
+```
+
+```{python}
+model_music_poly = LinearRegression()
+model_music_poly.fit(X_poly, y)
+
+print("intercept:", round(model_music_poly.intercept_, 4))
+print("coef:     ", model_music_poly.coef_.round(4))
+print("R²:       ", round(model_music_poly.score(X_poly, y), 3))
+```
+
+```{python}
+model_music_poly.coef_, model_music_poly.intercept_
+```
+
+6. Make a scatterplot of Gen Z recognition versus Millennial recognition, and overlay a graph of the fitted model.
+
+```{python}
+music["predicted_gen_z_poly"] = model_music_poly.predict(X_poly)
+
+music_sorted = music.sort_values("mean_millennial_recognition")
+
+(ggplot(music_sorted, aes(x="mean_millennial_recognition", y="mean_gen_z_recognition"))
+ + geom_point(alpha=0.6)
+ + geom_line(aes(y="predicted_gen_z_poly"), color="firebrick")
+ + labs(x="Millennial Recognition", y="Gen Z Recognition")
+ + theme_minimal())
+```
+
+7. Choose one of your favorite songs that is in the data set. Use each model to predict the Gen Z recognition for the song. Which model gives the best prediction?
+
+```{python}
+music[music.index.str.contains(
+    "2Pac|Snoop|Dr. Dre|Biggie|Notorious|Ice Cube|Nas|Jay-Z|Eminem|Wu-Tang|Warren G|Mobb Deep",
+    case=False,
+    regex=True
+)]
+```
+
+```{python}
+hip_hop = music[music.index.str.contains(
+    "2Pac|Dr. Dre|Notorious|Warren G",
+    case=False,
+    regex=True
+)]
+
+for song in hip_hop.index:
+    print(song)
+```
+
+```{python}
+song = music.loc[["Dr. Dre|||Nuthin' But A G Thang"]]
+
+song[["mean_millennial_recognition", "mean_gen_z_recognition"]]
+```
+
+```{python}
+model_music = LinearRegression()
+model_music.fit(X, y)
+```
+
+```{python}
+X_song = song[["mean_millennial_recognition"]]
+
+pred_linear = model_music.predict(X_song)[0]
+
+pred_log = np.exp(model_music_log.predict(X_song))[0]
+
+pred_poly = model_music_poly.predict(poly.transform(X_song))[0]
+
+print("Actual:", round(song["mean_gen_z_recognition"].iloc[0], 4))
+print("Linear:", round(pred_linear, 4))
+print("Log:", round(pred_log, 4))
+print("Polynomial:", round(pred_poly, 4))
+```
+
+I chose "Nuthin' But A G Thang" by Dr. Dre. The actual Gen Z recognition was 39.03%. The linear model predicted 35.87%, the log model predicted 27.34%, and the polynomial model predicted 28.99%. The linear model gave the best prediction because it was closest to the actual recognition rate.
+
+8. The song "Smells Like Teen Spirit" by Nirvana is inexplicably not included in the data set. Suppose the Millenial recognition of this song is 0.7. Use each model to predict the Gen Z recognition for this song. Which model gives the best prediction?
+
+```{python}
+X_nirvana = pd.DataFrame({
+    "mean_millennial_recognition": [0.7]
+})
+
+pred_linear = model_music.predict(X_nirvana)[0]
+
+pred_log = np.exp(model_music_log.predict(X_nirvana))[0]
+
+pred_poly = model_music_poly.predict(poly.transform(X_nirvana))[0]
+
+print("Linear:", round(pred_linear, 4))
+print("Log:", round(pred_log, 4))
+print("Polynomial:", round(pred_poly, 4))
+```
+
+The linear model predicted 44.66%, the log model predicted 38.72%, and the polynomial model predicted 41.78%. I would choose the polynomial model because it had the highest R² of 0.898 and fit our original data better. However, we can't know for sure which model is most accurate since we don't have the actual Gen Z recognition for this song.
+
+## Categorical Predictors (FEV data)
+
+Do non-smokers have better lungs than smokers? One measure of lung function is forced expiratory volume (FEV), the amount of air (in liters) an individual can exhale in the first second of forceful breath.  Larger values of FEV are indicative of better functioning lungs. In a study, FEV was measured for a group of 654 subjects, along with whether or not they smoked and other variables.
+
+```{python}
+df_fev = pd.read_csv("https://raw.githubusercontent.com/kevindavisross/data301/refs/heads/main/data/FEV.csv")
+
+df_fev
+```
+
+1\. First fit a regression model with a single predictor: Smoking status. Since this variable is categorical you need to "dummify" it before fitting the model.
+
+```{python}
+pd.get_dummies(df_fev["Smoking status"], drop_first=True, dtype=int)
+```
+
+```{python}
+X = pd.get_dummies(df_fev[["Smoking status"]], drop_first=True, dtype=int)
+y = df_fev["FEV"]
+
+model_fev = LinearRegression()
+model_fev.fit(X, y)
+
+print("intercept:", round(model_fev.intercept_, 4))
+print("coef:", model_fev.coef_.round(4))
+print("R²:", round(model_fev.score(X, y), 3))
+```
+
+2\. What are the predictions from this model? How could we have known that those would be the predictions?
+
+The model predicts an FEV of 2.5661 liters for non-smokers and 3.2768 liters for smokers. We could have known this because with only one categorical predictor, the regression model gives us the average FEV for each group.
+
+3\. Look at the results for the previous parts. What do you notice? Is this what you expected? Remember: larger FEV means better lungs - who tends to have larger FEV, smokers or non-smokers?
+
+The results show that smokers tend to have higher FEV than non-smokers, which is not what I expected. Since higher FEV means better lung function, I would have expected non-smokers to have higher values. This suggests that other factors, like age or height, could be affecting the results.
+
+4\. Suggest some explanations for why smokers tend to have *higher* FEV than non-smokers?
+
+Smokers may have higher FEV because they tend to be older or taller than non-smokers in this dataset. Age and height can affect lung capacity, so these factors could explain why smokers have higher FEV even though smoking is harmful to lung health.
+
+5\. Fit a linear regression model with two predictors: smoking status and Age (and no interaction).
+
+```{python}
+X_age = pd.get_dummies(df_fev[["Smoking status"]], drop_first=True, dtype=int)
+
+X_age["Age (months)"] = df_fev["Age (months)"]
+
+y = df_fev["FEV"]
+
+X_age.head()
+```
+
+```{python}
+model_fev_age = LinearRegression()
+model_fev_age.fit(X_age, y)
+
+print("intercept:", round(model_fev_age.intercept_, 4))
+print("coef:", model_fev_age.coef_.round(4))
+print("R²:", round(model_fev_age.score(X_age, y), 3))
+```
+
+6\. Make a scatterplot of FEV versus Age, colored by smoking status, and overlay a graph of the fitted model.
+
+```{python}
+df_fev["predicted_FEV"] = model_fev_age.predict(X_age)
+
+df_fev_sorted = df_fev.sort_values("Age (months)")
+```
+
+```{python}
+(ggplot(df_fev_sorted, aes(x="Age (months)", y="FEV", color="Smoking status"))
+ + geom_point(alpha=0.6)
+ + geom_line(aes(y="predicted_FEV"), size=1)
+ + labs(x="Age (months)", y="FEV (liters)", color="Smoking Status")
+ + theme_minimal())
+```
+
+7\. Fit a linear regression model with predictors smoking status, Age, and their interaction.
+
+```{python}
+X_interaction = X_age.copy()
+
+X_interaction["Smoking x Age"] = (
+    X_interaction["Smoking status_smoker"] * X_interaction["Age (months)"]
+)
+
+X_interaction.head()
+```
+
+```{python}
+model_fev_interaction = LinearRegression()
+model_fev_interaction.fit(X_interaction, y)
+
+print("intercept:", round(model_fev_interaction.intercept_, 4))
+print("coef:", model_fev_interaction.coef_.round(4))
+print("R²:", round(model_fev_interaction.score(X_interaction, y), 3))
+```
+
+8\. Make a scatterplot of FEV versus Age, colored by smoking status, and overlay a graph of the fitted model.
+
+```{python}
+df_fev["predicted_FEV_interaction"] = model_fev_interaction.predict(X_interaction)
+
+df_fev_sorted = df_fev.sort_values("Age (months)")
+```
+
+```{python}
+(ggplot(df_fev_sorted, aes(x="Age (months)", y="FEV", color="Smoking status"))
+ + geom_point(alpha=0.6)
+ + geom_line(aes(y="predicted_FEV_interaction"), size=1)
+ + labs(x="Age (months)", y="FEV (liters)", color="Smoking Status")
+ + theme_minimal())
+```
+
+9\. Compare the models. Which do you think is "best"? Why? How could you investigate?
+
+I think the model including smoking status, age, and their interaction is the best because it has the highest R² of 0.592. It also allows the relationship between age and FEV to be different for smokers and non-smokers. To investigate further, I would compare how well each model predicts FEV on new data using a test set and look at the prediction errors.
+
